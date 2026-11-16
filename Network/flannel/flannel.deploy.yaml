@@ -142,12 +142,12 @@ spec:
                 x86_64) ARCH=amd64 ;;
                 aarch64) ARCH=arm64 ;;
                 armv7l) ARCH=arm ;;
-                *) echo "Unsupported architecture: ${ARCH}" >&2; exit 1 ;;
+                *) echo "Unsupported architecture: $${ARCH}" >&2; exit 1 ;;
               esac
 
               VERSION=v1.9.1
               curl -fL --retry 3 \
-                "https://github.com/containernetworking/plugins/releases/download/${VERSION}/cni-plugins-linux-${ARCH}-${VERSION}.tgz" \
+                "https://github.com/containernetworking/plugins/releases/download/$${VERSION}/cni-plugins-linux-$${ARCH}-$${VERSION}.tgz" \
                 -o /tmp/cni-plugins.tgz
 
               tar -xzf /tmp/cni-plugins.tgz -C /host-cni-bin
