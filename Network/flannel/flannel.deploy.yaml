@@ -68,7 +68,7 @@ data:
     }
   net-conf.json: |
     {
-      "Network": "{{.cluster.network.podCIDR}}",
+      "Network": "${POD_CIDR}",
       "EnableNFTables": false,
       "Backend": {
         "Type": "vxlan"
