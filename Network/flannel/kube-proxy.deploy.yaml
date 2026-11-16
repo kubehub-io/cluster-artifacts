@@ -28,7 +28,7 @@ data:
     apiVersion: kubeproxy.config.k8s.io/v1alpha1
     kind: KubeProxyConfiguration
     mode: iptables
-    clusterCIDR: {{.cluster.network.podCIDR}}
+    clusterCIDR: ${.cluster.network.podCIDR}
     clientConnection:
       kubeconfig: /var/lib/kube-proxy/kubeconfig.conf
     conntrack:
@@ -47,7 +47,7 @@ data:
     clusters:
       - name: default
         cluster:
-          server: https://{{.cluster.public_dns}}:6443
+          server: https://${.cluster.public_dns}:6443
           certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
     users:
       - name: kube-proxy
@@ -85,7 +85,7 @@ spec:
         - operator: Exists
       containers:
         - name: kube-proxy
-          image: registry.k8s.io/kube-proxy:{{.cluster.kubeApiserverVersion}}
+          image: registry.k8s.io/kube-proxy:${.cluster.kubeApiserverVersion}
           command:
             - /usr/local/bin/kube-proxy
           args:
