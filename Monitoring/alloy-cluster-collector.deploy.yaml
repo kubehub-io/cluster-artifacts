@@ -1,0 +1,224 @@
+# @addon-name: grafana-alloy
+# @expose-to-user: true
+# @condition: .cluster.monitoring_profile.enabled
+# @version: 1.18.1
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kube-monitoring
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alloy-cluster-collector
+  namespace: kube-monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: alloy-cluster-collector-role
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: alloy-cluster-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alloy-cluster-collector-role
+subjects:
+  - kind: ServiceAccount
+    name: alloy-cluster-collector
+    namespace: kube-monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alloy-cluster-collector
+  namespace: kube-monitoring
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - kind: ServiceAccount
+    name: alloy-cluster-collector
+    namespace: kube-monitoring
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alloy-cluster-collector
+  namespace: kube-monitoring
+data:
+  config.alloy: |
+    loki.source.kubernetes_events "kubernetes_events" {
+      job_name   = "kubernetes-events"
+      log_format = "json"
+
+      forward_to = [loki.process.kubernetes_events.receiver]
+    }
+
+    loki.process "kubernetes_events" {
+      stage.json {
+        expressions = {
+          kind               = "kind",
+          action             = "action",
+          reason             = "reason",
+          reportingcontroller = "reportingController",
+          type               = "type",
+        }
+      }
+
+      stage.label_drop {
+        values = ["instance"]
+      }
+
+      stage.structured_metadata {
+        values = {
+          kind                = "",
+          action              = "",
+          reason              = "",
+          reportingcontroller = "",
+          type                = "",
+        }
+      }
+
+      stage.static_labels {
+        values = {
+          job     = "kubernetes-events",
+          cluster = "${Cluster_NAME}",
+          region  = "${Cluster_REGION}",
+        }
+      }
+
+      forward_to = [loki.write.default.receiver]
+    }
+
+    loki.write "default" {
+      endpoint {
+        url = "https://${Cluster_FQDN}:8004/loki/api/v1/push"
+        tls_config {
+          ca_file   = "/etc/alloy/clientcerts/ca.crt"
+          cert_file = "/etc/alloy/clientcerts/tls.crt"
+          key_file  = "/etc/alloy/clientcerts/tls.key"
+          insecure_skip_verify = false
+        }
+      }
+    }
+
+    discovery.kubernetes "kube_state_metrics" {
+      role = "pod"
+      namespaces {
+        own_namespace = true
+      }
+      selectors {
+        role = "pod"
+        label = "app.kubernetes.io/name=kube-state-metrics"
+      }
+    }
+
+    discovery.relabel "kube_state_metrics" {
+      targets = discovery.kubernetes.kube_state_metrics.targets
+
+      rule {
+        target_label = "job"
+        replacement  = "kube-state-metrics"
+        action        = "replace"
+      }
+
+      rule {
+        target_label = "cluster"
+        replacement  = "${Cluster_NAME}"
+        action        = "replace"
+      }
+
+      rule {
+        target_label = "region"
+        replacement  = "${Cluster_REGION}"
+        action        = "replace"
+      }
+    }
+
+    prometheus.scrape "kube_state_metrics" {
+      targets    = discovery.relabel.kube_state_metrics.output
+      forward_to = [prometheus.remote_write.mimir.receiver]
+    }
+
+    prometheus.remote_write "mimir" {
+      endpoint {
+        url = "https://${Cluster_FQDN}:8002/api/v1/push"
+        tls_config {
+          ca_file   = "/etc/alloy/clientcerts/ca.crt"
+          cert_file = "/etc/alloy/clientcerts/tls.crt"
+          key_file  = "/etc/alloy/clientcerts/tls.key"
+
+          insecure_skip_verify = false
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alloy-cluster-collector
+  namespace: kube-monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: alloy-cluster-collector
+  template:
+    metadata:
+      labels:
+        app: alloy-cluster-collector
+    spec:
+      serviceAccountName: alloy-cluster-collector
+
+      containers:
+        - name: alloy
+          image: grafana/alloy:v1.18.1
+          args:
+            - run
+            - /etc/alloy/config.alloy
+            - --storage.path=/var/lib/alloy
+          ports:
+            - name: http
+              containerPort: 12345
+              protocol: TCP
+
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alloy
+              readOnly: true
+            - name: mtls-cert
+              mountPath: /etc/alloy/clientcerts
+              readOnly: true
+            - name: storage
+              mountPath: /var/lib/alloy
+
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+
+      volumes:
+        - name: config
+          configMap:
+            name: alloy-cluster-collector
+        - name: mtls-cert
+          secret:
+            secretName: alloy-cert
+        - name: storage
+          emptyDir: {}
