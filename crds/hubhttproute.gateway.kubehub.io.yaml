@@ -1,0 +1,463 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: hubhttproutes.gateway.kubehub.io
+spec:
+  group: gateway.kubehub.io
+  names:
+    categories:
+    - gateway-api
+    kind: HubHttpRoute
+    listKind: HubHttpRouteList
+    plural: hubhttproutes
+    singular: hubhttproute
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.hostname
+      name: Hostname
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          HubHttpRoute expresses HTTP routing intent for a service in the cluster it is
+          created in. The cloud assigns its public hostname; customDomainName may add
+          an administrator-approved hostname for the same route.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              customDomainName:
+                description: |-
+                  CustomDomainName is an optional administrator-owned DNS name that should
+                  serve this route in addition to the allocated hostname.
+                maxLength: 253
+                type: string
+              rules:
+                description: |-
+                  Rules are evaluated in order. Each match in a rule is an alternative;
+                  fields within one match are combined.
+                items:
+                  properties:
+                    backendRefs:
+                      description: |-
+                        BackendRefs are the services that receive matched requests. Weights
+                        distribute requests proportionally when more than one backend is given.
+                      items:
+                        properties:
+                          group:
+                            type: string
+                          kind:
+                            type: string
+                          name:
+                            minLength: 1
+                            type: string
+                          namespace:
+                            type: string
+                          port:
+                            format: int32
+                            maximum: 65535
+                            minimum: 1
+                            type: integer
+                          weight:
+                            format: int32
+                            minimum: 0
+                            type: integer
+                        required:
+                        - name
+                        - port
+                        type: object
+                        x-kubernetes-validations:
+                        - message: backend group must be the core API group
+                          rule: '!has(self.group) || size(self.group) == 0'
+                        - message: only Service backends are supported
+                          rule: '!has(self.kind) || self.kind == ''Service'''
+                      maxItems: 16
+                      minItems: 1
+                      type: array
+                      x-kubernetes-list-type: atomic
+                    filters:
+                      description: Filters are applied in order.
+                      items:
+                        properties:
+                          browserAuth:
+                            description: |-
+                              HubHttpBrowserAuthFilter protects a browser-facing route with the KubeHub
+                              authentication service. The controller runs the OpenID Connect authorization
+                              code flow with PKCE, stores the resulting access and refresh tokens in secure
+                              cookies, and only forwards requests made by one of the allowed users.
+                            properties:
+                              allowedUsers:
+                                description: |-
+                                  AllowedUsers are the email addresses allowed to reach the backend. A
+                                  token whose email claim is not in this list is refused with 403 after a
+                                  successful login.
+                                items:
+                                  maxLength: 128
+                                  type: string
+                                  x-kubernetes-validations:
+                                  - message: must be a valid email address
+                                    rule: self.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
+                                maxItems: 100
+                                minItems: 1
+                                type: array
+                                x-kubernetes-list-type: set
+                              provider:
+                                description: |-
+                                  Provider selects the authentication provider. kubehub is the only value
+                                  supported for now.
+                                enum:
+                                - kubehub
+                                type: string
+                            required:
+                            - allowedUsers
+                            - provider
+                            type: object
+                          jwtAuth:
+                            description: |-
+                              HubHttpJWTAuthFilter is intentionally smaller than the Kubernetes
+                              AuthenticationConfiguration API: one issuer, one audience, and one CEL
+                              claim rule. Discovery is derived from issuerURL.
+                            properties:
+                              audience:
+                                type: string
+                              claimValidationRule:
+                                type: string
+                              issuerUrl:
+                                type: string
+                            required:
+                            - audience
+                            - issuerUrl
+                            type: object
+                          requestHeaderModifier:
+                            description: RequestHeaderModifier modifies request headers
+                              before forwarding.
+                            properties:
+                              add:
+                                items:
+                                  properties:
+                                    name:
+                                      type: string
+                                    value:
+                                      type: string
+                                  required:
+                                  - name
+                                  - value
+                                  type: object
+                                type: array
+                              remove:
+                                items:
+                                  type: string
+                                type: array
+                              set:
+                                items:
+                                  properties:
+                                    name:
+                                      type: string
+                                    value:
+                                      type: string
+                                  required:
+                                  - name
+                                  - value
+                                  type: object
+                                type: array
+                            type: object
+                          requestMirror:
+                            properties:
+                              group:
+                                type: string
+                              kind:
+                                type: string
+                              name:
+                                minLength: 1
+                                type: string
+                              namespace:
+                                type: string
+                              port:
+                                format: int32
+                                maximum: 65535
+                                minimum: 1
+                                type: integer
+                              weight:
+                                format: int32
+                                minimum: 0
+                                type: integer
+                            required:
+                            - name
+                            - port
+                            type: object
+                            x-kubernetes-validations:
+                            - message: backend group must be the core API group
+                              rule: '!has(self.group) || size(self.group) == 0'
+                            - message: only Service backends are supported
+                              rule: '!has(self.kind) || self.kind == ''Service'''
+                          requestRedirect:
+                            properties:
+                              hostname:
+                                type: string
+                              path:
+                                properties:
+                                  replaceFullPath:
+                                    type: string
+                                  replacePrefixMatch:
+                                    type: string
+                                  type:
+                                    enum:
+                                    - ReplaceFullPath
+                                    - ReplacePrefixMatch
+                                    type: string
+                                required:
+                                - type
+                                type: object
+                              port:
+                                format: int32
+                                type: integer
+                              scheme:
+                                type: string
+                              statusCode:
+                                format: int32
+                                type: integer
+                            type: object
+                          responseHeaderModifier:
+                            description: ResponseHeaderModifier modifies response
+                              headers before returning them.
+                            properties:
+                              add:
+                                items:
+                                  properties:
+                                    name:
+                                      type: string
+                                    value:
+                                      type: string
+                                  required:
+                                  - name
+                                  - value
+                                  type: object
+                                type: array
+                              remove:
+                                items:
+                                  type: string
+                                type: array
+                              set:
+                                items:
+                                  properties:
+                                    name:
+                                      type: string
+                                    value:
+                                      type: string
+                                  required:
+                                  - name
+                                  - value
+                                  type: object
+                                type: array
+                            type: object
+                          type:
+                            description: Type selects the filter operation.
+                            enum:
+                            - RequestHeaderModifier
+                            - ResponseHeaderModifier
+                            - RequestRedirect
+                            - URLRewrite
+                            - RequestMirror
+                            - JWTAuth
+                            - BrowserAuth
+                            type: string
+                          urlRewrite:
+                            properties:
+                              hostname:
+                                type: string
+                              path:
+                                properties:
+                                  replaceFullPath:
+                                    type: string
+                                  replacePrefixMatch:
+                                    type: string
+                                  type:
+                                    enum:
+                                    - ReplaceFullPath
+                                    - ReplacePrefixMatch
+                                    type: string
+                                required:
+                                - type
+                                type: object
+                            type: object
+                        required:
+                        - type
+                        type: object
+                      maxItems: 16
+                      type: array
+                      x-kubernetes-list-type: atomic
+                    matches:
+                      description: |-
+                        Matches contains the HTTP request conditions for this rule. An omitted
+                        match defaults to a prefix match on "/".
+                      items:
+                        properties:
+                          headers:
+                            items:
+                              properties:
+                                name:
+                                  type: string
+                                type:
+                                  enum:
+                                  - Exact
+                                  - RegularExpression
+                                  type: string
+                                value:
+                                  type: string
+                              required:
+                              - name
+                              - value
+                              type: object
+                            type: array
+                          method:
+                            type: string
+                          path:
+                            properties:
+                              type:
+                                enum:
+                                - Exact
+                                - PathPrefix
+                                - RegularExpression
+                                type: string
+                              value:
+                                type: string
+                            type: object
+                          queryParams:
+                            items:
+                              properties:
+                                name:
+                                  type: string
+                                type:
+                                  enum:
+                                  - Exact
+                                  - RegularExpression
+                                  type: string
+                                value:
+                                  type: string
+                              required:
+                              - name
+                              - value
+                              type: object
+                            type: array
+                        type: object
+                      maxItems: 64
+                      type: array
+                      x-kubernetes-list-type: atomic
+                    name:
+                      description: Name is unique within the route and is useful for
+                        identifying a rule.
+                      type: string
+                  type: object
+                  x-kubernetes-validations:
+                  - message: each rule must reference at least one Service backend
+                    rule: has(self.backendRefs) && size(self.backendRefs) > 0
+                maxItems: 16
+                minItems: 1
+                type: array
+                x-kubernetes-list-type: atomic
+            required:
+            - rules
+            type: object
+          status:
+            properties:
+              conditions:
+                description: |-
+                  Conditions report whether the hostname allocation and route processing
+                  succeeded.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              hostname:
+                description: Hostname is the dynamically allocated public hostname
+                  for this route.
+                type: string
+              observedGeneration:
+                description: ObservedGeneration is the generation that was last processed.
+                format: int64
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
